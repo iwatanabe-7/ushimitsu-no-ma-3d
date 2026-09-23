@@ -6,6 +6,10 @@ namespace Ushimitsu.Interaction
     public class InteractionController : MonoBehaviour
     {
         public float range = 2.6f;
+        // A thin ray is hard to land on small/low objects (e.g. a floor-level
+        // tatami mat) once the camera sits at a proper eye height, so we sweep a
+        // small sphere instead - much more forgiving without changing any hitboxes.
+        public float castRadius = 0.18f;
         public LayerMask interactMask = ~0;
         public HUDController hud;
 
@@ -30,7 +34,7 @@ namespace Ushimitsu.Interaction
             }
 
             Ray ray = new Ray(transform.position, transform.forward);
-            if (Physics.Raycast(ray, out RaycastHit hit, range, interactMask, QueryTriggerInteraction.Collide))
+            if (Physics.SphereCast(ray, castRadius, out RaycastHit hit, range, interactMask, QueryTriggerInteraction.Collide))
             {
                 IInteractable interactable = hit.collider.GetComponentInParent<IInteractable>();
                 if (interactable != null)

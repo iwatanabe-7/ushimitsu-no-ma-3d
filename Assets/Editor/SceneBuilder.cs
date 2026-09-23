@@ -14,12 +14,11 @@ namespace Ushimitsu.EditorTools
     public static class SceneBuilder
     {
         static Font uiFont;
-        static Color wallColor = new Color(0.11f, 0.086f, 0.075f);
-        static Color floorColor = new Color(0.08f, 0.06f, 0.05f);
-        static Color accentColor = new Color(0.42f, 0.19f, 0.16f);
-        static Color propColor = new Color(0.18f, 0.14f, 0.12f);
         static Color creamText = new Color(0.93f, 0.89f, 0.83f);
         static Color goldText = new Color(0.65f, 0.51f, 0.25f);
+
+        static Material matPlaster, matWood, matWoodDark, matTatami, matTatamiEdge;
+        static Material matShoji, matMirror, matGold, matPaper, matStone, matBulb;
 
         [MenuItem("Ushimitsu/Build Scene")]
         public static void BuildScene()
@@ -28,6 +27,7 @@ namespace Ushimitsu.EditorTools
 
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
+            CreateMaterials();
             SetupLightingAndFog();
 
             BuildEventSystem();
@@ -76,29 +76,33 @@ namespace Ushimitsu.EditorTools
 
         static void SetupLightingAndFog()
         {
+            // Cold, very dim ambient so the warm bulbs and the moonlit shoji carry the scene.
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.05f, 0.045f, 0.04f);
+            RenderSettings.ambientLight = new Color(0.035f, 0.038f, 0.05f);
             RenderSettings.fog = true;
-            RenderSettings.fogColor = new Color(0.02f, 0.015f, 0.012f);
+            RenderSettings.fogColor = new Color(0.015f, 0.014f, 0.018f);
             RenderSettings.fogMode = FogMode.Exponential;
-            RenderSettings.fogDensity = 0.045f;
+            RenderSettings.fogDensity = 0.055f;
         }
 
         static GameObject BuildPlayer()
         {
             GameObject player = new GameObject("Player");
-            player.transform.position = new Vector3(0f, 1f, -2.5f);
+            // Starts in the middle of the washitsu, facing the tokonoma alcove.
+            player.transform.position = new Vector3(0f, 0.6f, 1.1f);
+            player.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
 
             CharacterController cc = player.AddComponent<CharacterController>();
-            cc.height = 1.8f;
-            cc.radius = 0.35f;
-            cc.center = new Vector3(0f, 0.9f, 0f);
+            cc.height = 1.75f;
+            cc.radius = 0.3f;
+            cc.center = new Vector3(0f, 0.875f, 0f);
+            cc.stepOffset = 0.25f;
 
             FirstPersonController fpc = player.AddComponent<FirstPersonController>();
 
             GameObject camObj = new GameObject("PlayerCamera");
             camObj.transform.SetParent(player.transform);
-            camObj.transform.localPosition = new Vector3(0f, 0.65f, 0f);
+            camObj.transform.localPosition = new Vector3(0f, 1.6f, 0f);
             camObj.transform.localRotation = Quaternion.identity;
             Camera cam = camObj.AddComponent<Camera>();
             cam.nearClipPlane = 0.05f;
@@ -134,123 +138,504 @@ namespace Ushimitsu.EditorTools
             return jumpscare;
         }
 
+        // ---------------- Layout constants ----------------
+
+        const float RoomHalf = 2.7f;      // washitsu is a 5.4m square
+        const float WallH = 2.4f;
+        const float WallT = 0.3f;
+        const float DoorHalf = 1f;        // doorway / corridor half width
+        const float CorridorZ0 = 2.7f;
+        const float CorridorZ1 = 8.7f;
+        const float GenkanZ0 = 8.7f;
+        const float GenkanZ1 = 13.7f;
+        const float GenkanHalfX = 2.5f;
+
+        static float WallInner(float outer)
+        {
+            return outer - WallT * 0.5f;
+        }
+
         // ---------------- Rooms ----------------
 
         static void BuildWashitsu()
         {
             GameObject room = new GameObject("Room_Washitsu");
+            Transform t = room.transform;
 
-            CreateFloor(room.transform, new Vector3(0f, 0f, 0f), new Vector3(8f, 0.2f, 8f));
-            CreateWall(room.transform, "Wall_South", new Vector3(0f, 1.4f, -4f), new Vector3(8.3f, 2.8f, 0.3f));
-            CreateWall(room.transform, "Wall_East", new Vector3(4f, 1.4f, 0f), new Vector3(0.3f, 2.8f, 8.3f));
-            CreateWall(room.transform, "Wall_West", new Vector3(-4f, 1.4f, 0f), new Vector3(0.3f, 2.8f, 8.3f));
-            // Doorway gap is exactly x:[-1,1] to line up flush with the corridor width below.
-            CreateWall(room.transform, "Wall_North_Left", new Vector3(-2.5f, 1.4f, 4f), new Vector3(3f, 2.8f, 0.3f));
-            CreateWall(room.transform, "Wall_North_Right", new Vector3(2.5f, 1.4f, 4f), new Vector3(3f, 2.8f, 0.3f));
+            Box(t, "FloorSlab", new Vector3(0f, -0.1f, 0f),
+                new Vector3(RoomHalf * 2f, 0.2f, RoomHalf * 2f), matWoodDark, true);
+            BuildTatamiField(t);
 
-            CreatePointLight(room.transform, new Vector3(0f, 2.4f, 0f), new Color(0.9f, 0.72f, 0.45f), 1.1f, 6f);
+            float wallY = WallH * 0.5f;
+            Box(t, "Wall_South", new Vector3(0f, wallY, -RoomHalf),
+                new Vector3(RoomHalf * 2f + WallT, WallH, WallT), matPlaster, true);
+            Box(t, "Wall_East", new Vector3(RoomHalf, wallY, 0f),
+                new Vector3(WallT, WallH, RoomHalf * 2f + WallT), matPlaster, true);
+            Box(t, "Wall_West", new Vector3(-RoomHalf, wallY, 0f),
+                new Vector3(WallT, WallH, RoomHalf * 2f + WallT), matPlaster, true);
 
-            GameObject scroll = CreateProp(room.transform, "床の間の掛け軸", new Vector3(0f, 1.7f, -3.85f), new Vector3(1.2f, 1.6f, 0.08f), accentColor);
-            scroll.AddComponent<ScrollClue>();
+            float segW = RoomHalf - DoorHalf;
+            float segCx = DoorHalf + segW * 0.5f;
+            Box(t, "Wall_North_Left", new Vector3(-segCx, wallY, RoomHalf),
+                new Vector3(segW, WallH, WallT), matPlaster, true);
+            Box(t, "Wall_North_Right", new Vector3(segCx, wallY, RoomHalf),
+                new Vector3(segW, WallH, WallT), matPlaster, true);
 
-            GameObject closet = CreateProp(room.transform, "押入れ", new Vector3(-3.8f, 1.2f, -1.5f), new Vector3(0.35f, 2.2f, 1.6f), propColor);
-            closet.AddComponent<ClosetDoll>();
+            BuildCeiling(t, new Vector3(0f, WallH, 0f), new Vector2(RoomHalf * 2f, RoomHalf * 2f), 4);
 
-            GameObject altar = CreateProp(room.transform, "仏壇", new Vector3(3.8f, 1.0f, -1.5f), new Vector3(0.5f, 1.8f, 1.0f), propColor);
-            altar.AddComponent<AltarDrawer>();
+            BuildTokonoma(t);
+            BuildCloset(t);
+            BuildAltar(t);
+            BuildMirrorStand(t);
 
-            GameObject tatami = CreateProp(room.transform, "畳", new Vector3(1.4f, 0.06f, 1.6f), new Vector3(1.6f, 0.08f, 1.6f), new Color(0.3f, 0.26f, 0.16f));
-            tatami.AddComponent<TatamiFloor>();
+            // Moon-lit shoji on the east wall: the paper glows, the lattice reads black.
+            BuildShoji(t, new Vector3(WallInner(RoomHalf) - 0.03f, 1.2f, 1.35f), new Vector2(2.2f, 1.9f), true);
 
-            GameObject mirror = CreateProp(room.transform, "鏡台", new Vector3(-3.6f, 0.9f, 1.8f), new Vector3(0.6f, 1.2f, 0.5f), propColor);
-            mirror.AddComponent<MirrorStand>();
+            BuildHangingBulb(t, new Vector3(0f, 2.02f, -0.2f), 0.95f, 8f, 0.08f);
         }
 
         static void BuildCorridor()
         {
             GameObject corridor = new GameObject("Corridor");
+            Transform t = corridor.transform;
 
-            // Walls/floor extend slightly past z:[4,10] into the neighbouring rooms so the
-            // seams fully overlap the room walls instead of leaving a hairline gap.
-            CreateFloor(corridor.transform, new Vector3(0f, 0f, 7f), new Vector3(2f, 0.2f, 6.3f));
-            CreateWall(corridor.transform, "Wall_East", new Vector3(1f, 1.4f, 7f), new Vector3(0.3f, 2.8f, 6.3f));
-            CreateWall(corridor.transform, "Wall_West", new Vector3(-1f, 1.4f, 7f), new Vector3(0.3f, 2.8f, 6.3f));
+            float zc = (CorridorZ0 + CorridorZ1) * 0.5f;
+            float len = CorridorZ1 - CorridorZ0 + WallT;
 
-            CreatePointLight(corridor.transform, new Vector3(0f, 2.4f, 7f), new Color(0.55f, 0.42f, 0.3f), 0.6f, 5f);
+            Box(t, "FloorSlab", new Vector3(0f, -0.1f, zc),
+                new Vector3(DoorHalf * 2f, 0.2f, len), matWood, true);
+
+            for (int i = 0; i < 14; i++)
+            {
+                float z = CorridorZ0 + 0.3f + i * 0.46f;
+                if (z > CorridorZ1) break;
+                Box(t, "Plank" + i, new Vector3(0f, 0.012f, z),
+                    new Vector3(DoorHalf * 2f - 0.04f, 0.024f, 0.42f), matWoodDark, false);
+            }
+
+            float wallY = WallH * 0.5f;
+            Box(t, "Wall_East", new Vector3(DoorHalf, wallY, zc),
+                new Vector3(WallT, WallH, len), matPlaster, true);
+            Box(t, "Wall_West", new Vector3(-DoorHalf, wallY, zc),
+                new Vector3(WallT, WallH, len), matPlaster, true);
+
+            BuildCeiling(t, new Vector3(0f, WallH, zc), new Vector2(DoorHalf * 2f, len), 4);
+            BuildShoji(t, new Vector3(WallInner(DoorHalf) - 0.03f, 1.2f, zc - 0.9f), new Vector2(1.8f, 1.9f), true);
+            BuildHangingBulb(t, new Vector3(0f, 2.02f, zc + 1.3f), 0.5f, 6f, 0.3f);
         }
 
         static DoorLock BuildGenkan()
         {
             GameObject room = new GameObject("Room_Genkan");
+            Transform t = room.transform;
 
-            CreateFloor(room.transform, new Vector3(0f, 0f, 12.5f), new Vector3(5f, 0.2f, 5f));
-            CreateWall(room.transform, "Wall_North", new Vector3(0f, 1.4f, 14.9f), new Vector3(5.3f, 2.8f, 0.3f));
-            CreateWall(room.transform, "Wall_East", new Vector3(2.4f, 1.4f, 12.5f), new Vector3(0.3f, 2.8f, 5.3f));
-            CreateWall(room.transform, "Wall_West", new Vector3(-2.4f, 1.4f, 12.5f), new Vector3(0.3f, 2.8f, 5.3f));
-            // South wall of the entrance room is open only where the corridor connects (x:[-1,1]).
-            CreateWall(room.transform, "Wall_South_Left", new Vector3(-1.75f, 1.4f, 10f), new Vector3(1.5f, 2.8f, 0.3f));
-            CreateWall(room.transform, "Wall_South_Right", new Vector3(1.75f, 1.4f, 10f), new Vector3(1.5f, 2.8f, 0.3f));
+            float zc = (GenkanZ0 + GenkanZ1) * 0.5f;
+            float depth = GenkanZ1 - GenkanZ0;
 
-            CreatePointLight(room.transform, new Vector3(0f, 2.4f, 12.5f), new Color(0.5f, 0.4f, 0.32f), 0.7f, 6f);
+            Box(t, "FloorSlab", new Vector3(0f, -0.1f, zc),
+                new Vector3(GenkanHalfX * 2f, 0.2f, depth), matWood, true);
+            Box(t, "Doma", new Vector3(0f, 0.008f, GenkanZ1 - 1.1f),
+                new Vector3(GenkanHalfX * 2f - 0.3f, 0.03f, 2f), matStone, false);
+            Box(t, "Kamachi", new Vector3(0f, 0.06f, GenkanZ1 - 2.1f),
+                new Vector3(GenkanHalfX * 2f - 0.3f, 0.11f, 0.12f), matWoodDark, false);
 
-            GameObject door = CreateProp(room.transform, "出口の扉", new Vector3(0f, 1.3f, 14.7f), new Vector3(1.4f, 2.4f, 0.15f), accentColor);
+            float wallY = WallH * 0.5f;
+            Box(t, "Wall_North", new Vector3(0f, wallY, GenkanZ1),
+                new Vector3(GenkanHalfX * 2f + WallT, WallH, WallT), matPlaster, true);
+            Box(t, "Wall_East", new Vector3(GenkanHalfX, wallY, zc),
+                new Vector3(WallT, WallH, depth + WallT), matPlaster, true);
+            Box(t, "Wall_West", new Vector3(-GenkanHalfX, wallY, zc),
+                new Vector3(WallT, WallH, depth + WallT), matPlaster, true);
+
+            float stubW = GenkanHalfX - DoorHalf;
+            float stubCx = DoorHalf + stubW * 0.5f;
+            Box(t, "Wall_South_Left", new Vector3(-stubCx, wallY, GenkanZ0),
+                new Vector3(stubW, WallH, WallT), matPlaster, true);
+            Box(t, "Wall_South_Right", new Vector3(stubCx, wallY, GenkanZ0),
+                new Vector3(stubW, WallH, WallT), matPlaster, true);
+
+            BuildCeiling(t, new Vector3(0f, WallH, zc), new Vector2(GenkanHalfX * 2f, depth), 3);
+            BuildHangingBulb(t, new Vector3(0f, 2.02f, zc - 0.6f), 0.55f, 7f, 0.15f);
+
+            GameObject door = new GameObject("出口の扉");
+            door.transform.SetParent(t, false);
+            float dz = WallInner(GenkanZ1) - 0.06f;
+
+            Box(door.transform, "Panel_L", new Vector3(-0.44f, 1f, dz),
+                new Vector3(0.86f, 1.94f, 0.05f), matShoji, true);
+            Box(door.transform, "Panel_R", new Vector3(0.44f, 1f, dz - 0.06f),
+                new Vector3(0.86f, 1.94f, 0.05f), matShoji, true);
+            Box(door.transform, "Frame_Top", new Vector3(0f, 2.04f, dz - 0.03f),
+                new Vector3(1.94f, 0.12f, 0.16f), matWood, false);
+            Box(door.transform, "Frame_Bottom", new Vector3(0f, 0.03f, dz - 0.03f),
+                new Vector3(1.94f, 0.1f, 0.16f), matWood, false);
+            Box(door.transform, "Frame_L", new Vector3(-0.94f, 1f, dz - 0.03f),
+                new Vector3(0.1f, 2.06f, 0.16f), matWood, false);
+            Box(door.transform, "Frame_R", new Vector3(0.94f, 1f, dz - 0.03f),
+                new Vector3(0.1f, 2.06f, 0.16f), matWood, false);
+
+            for (int i = 1; i < 5; i++)
+            {
+                float y = 0.1f + 1.84f * i / 5f;
+                Box(door.transform, "Slat" + i, new Vector3(0f, y, dz - 0.05f),
+                    new Vector3(1.8f, 0.035f, 0.04f), matWoodDark, false);
+            }
+
+            Box(door.transform, "LockBox", new Vector3(1.2f, 1.05f, dz - 0.04f),
+                new Vector3(0.24f, 0.32f, 0.12f), matWoodDark, true);
+            Cyl(door.transform, "Dial", new Vector3(1.2f, 1.05f, dz - 0.13f),
+                0.07f, 0.03f, matGold, false, new Vector3(90f, 0f, 0f));
+
             DoorLock doorLock = door.AddComponent<DoorLock>();
+
+            GameObject moon = new GameObject("MoonBleed");
+            moon.transform.SetParent(t, false);
+            moon.transform.position = new Vector3(0f, 1.7f, GenkanZ1 - 0.5f);
+            Light ml = moon.AddComponent<Light>();
+            ml.type = LightType.Point;
+            ml.color = new Color(0.52f, 0.66f, 0.95f);
+            ml.intensity = 0.9f;
+            ml.range = 5.5f;
+
             return doorLock;
+        }
+
+        // ---------------- Set dressing ----------------
+
+        static void BuildTatamiField(Transform parent)
+        {
+            GameObject group = new GameObject("Tatami");
+            group.transform.SetParent(parent, false);
+
+            float[] xs = { -1.8f, 0f, 1.8f };
+            float[] zs = { -2.25f, -1.35f, -0.45f, 0.45f, 1.35f, 2.25f };
+
+            foreach (float x in xs)
+            {
+                foreach (float z in zs)
+                {
+                    if (Mathf.Approximately(x, 0f) && Mathf.Approximately(z, 0.45f)) continue;
+                    CreateTatamiMat(group.transform, new Vector3(x, 0.03f, z), false);
+                }
+            }
+
+            // The one loose mat the player can lift.
+            GameObject loose = new GameObject("畳");
+            loose.transform.SetParent(parent, false);
+            CreateTatamiMat(loose.transform, new Vector3(0f, 0.07f, 0.45f), true);
+            loose.AddComponent<TatamiFloor>();
+
+            // The visible mat is only 6cm tall, which is hard to land a look-ray on
+            // once the camera sits at a real eye height. This invisible box gives the
+            // interaction sweep a much taller target without changing how it looks.
+            GameObject hitbox = new GameObject("InteractHitbox");
+            hitbox.transform.SetParent(loose.transform, false);
+            hitbox.transform.localPosition = new Vector3(0f, 0.2f, 0f);
+            BoxCollider bc = hitbox.AddComponent<BoxCollider>();
+            bc.size = new Vector3(1.74f, 0.4f, 0.84f);
+        }
+
+        static void CreateTatamiMat(Transform parent, Vector3 center, bool collider)
+        {
+            Box(parent, "Mat", center, new Vector3(1.74f, 0.06f, 0.84f), matTatami, collider);
+            Box(parent, "Edge_N", center + new Vector3(0f, 0.002f, 0.42f),
+                new Vector3(1.74f, 0.064f, 0.05f), matTatamiEdge, false);
+            Box(parent, "Edge_S", center + new Vector3(0f, 0.002f, -0.42f),
+                new Vector3(1.74f, 0.064f, 0.05f), matTatamiEdge, false);
+        }
+
+        static void BuildCeiling(Transform parent, Vector3 center, Vector2 size, int beamCount)
+        {
+            GameObject group = new GameObject("Ceiling");
+            group.transform.SetParent(parent, false);
+
+            Box(group.transform, "Panel", new Vector3(center.x, center.y + 0.05f, center.z),
+                new Vector3(size.x, 0.08f, size.y), matWoodDark, false);
+
+            for (int i = 0; i < beamCount; i++)
+            {
+                float k = (i + 1f) / (beamCount + 1f);
+                float z = center.z - size.y * 0.5f + size.y * k;
+                Box(group.transform, "Beam" + i, new Vector3(center.x, center.y - 0.04f, z),
+                    new Vector3(size.x, 0.09f, 0.1f), matWood, false);
+            }
+        }
+
+        static void BuildTokonoma(Transform parent)
+        {
+            GameObject group = new GameObject("床の間");
+            group.transform.SetParent(parent, false);
+
+            float back = -WallInner(RoomHalf) + 0.02f;
+
+            Box(group.transform, "BackPanel", new Vector3(-0.85f, 1.2f, back),
+                new Vector3(1.9f, 2.2f, 0.04f), matPaper, false);
+            Box(group.transform, "Platform", new Vector3(-0.85f, 0.09f, back + 0.24f),
+                new Vector3(1.9f, 0.18f, 0.5f), matWood, true);
+            Box(group.transform, "Lintel", new Vector3(-0.85f, 2.08f, back + 0.24f),
+                new Vector3(1.9f, 0.16f, 0.5f), matWood, false);
+            Cyl(group.transform, "Tokobashira", new Vector3(0.14f, 1.2f, back + 0.3f),
+                0.06f, 2.4f, matWood, false);
+
+            GameObject scroll = new GameObject("掛け軸");
+            scroll.transform.SetParent(group.transform, false);
+            Box(scroll.transform, "Paper", new Vector3(-0.85f, 1.35f, back + 0.04f),
+                new Vector3(0.52f, 1.2f, 0.02f), matPaper, true);
+            Rod(scroll.transform, "Rod_Top", new Vector3(-0.85f, 1.97f, back + 0.04f), 0.62f, 0.022f);
+            Rod(scroll.transform, "Rod_Bottom", new Vector3(-0.85f, 0.73f, back + 0.04f), 0.62f, 0.022f);
+            scroll.AddComponent<ScrollClue>();
+        }
+
+        static void BuildCloset(Transform parent)
+        {
+            GameObject closet = new GameObject("押入れ");
+            closet.transform.SetParent(parent, false);
+
+            float x = -WallInner(RoomHalf) + 0.04f;
+
+            Box(closet.transform, "Frame", new Vector3(x - 0.03f, 1f, 0.35f),
+                new Vector3(0.1f, 2.06f, 1.98f), matWood, false);
+            Box(closet.transform, "Door_L", new Vector3(x + 0.02f, 1f, -0.11f),
+                new Vector3(0.05f, 1.86f, 0.9f), matPaper, true);
+            Box(closet.transform, "Door_R", new Vector3(x + 0.06f, 1f, 0.81f),
+                new Vector3(0.05f, 1.86f, 0.9f), matPaper, true);
+            Box(closet.transform, "Rail", new Vector3(x + 0.04f, 0.05f, 0.35f),
+                new Vector3(0.14f, 0.1f, 1.9f), matWood, false);
+
+            closet.AddComponent<ClosetDoll>();
+        }
+
+        static void BuildAltar(Transform parent)
+        {
+            GameObject altar = new GameObject("仏壇");
+            altar.transform.SetParent(parent, false);
+
+            float x = WallInner(RoomHalf) - 0.3f;
+
+            Box(altar.transform, "Body", new Vector3(x, 0.72f, -1f),
+                new Vector3(0.6f, 1.44f, 1f), matWoodDark, true);
+            Box(altar.transform, "Interior", new Vector3(x - 0.24f, 0.95f, -1f),
+                new Vector3(0.12f, 0.8f, 0.76f), matGold, false);
+            Box(altar.transform, "Drawer", new Vector3(x - 0.31f, 0.26f, -1f),
+                new Vector3(0.06f, 0.26f, 0.84f), matWood, true);
+            Box(altar.transform, "Knob", new Vector3(x - 0.35f, 0.26f, -1f),
+                new Vector3(0.05f, 0.05f, 0.05f), matGold, false);
+            Cyl(altar.transform, "Candle", new Vector3(x - 0.14f, 1.45f, -1.22f),
+                0.025f, 0.16f, matPaper, false);
+
+            GameObject candle = new GameObject("CandleLight");
+            candle.transform.SetParent(altar.transform, false);
+            candle.transform.position = new Vector3(x - 0.16f, 1.52f, -1f);
+            Light cl = candle.AddComponent<Light>();
+            cl.type = LightType.Point;
+            cl.color = new Color(1f, 0.6f, 0.26f);
+            cl.intensity = 0.7f;
+            cl.range = 2.8f;
+
+            LightFlicker cf = candle.AddComponent<LightFlicker>();
+            cf.baseIntensity = 0.7f;
+            cf.flickerAmount = 0.4f;
+            cf.speed = 9f;
+            cf.blackoutChance = 0f;
+
+            altar.AddComponent<AltarDrawer>();
+        }
+
+        static void BuildMirrorStand(Transform parent)
+        {
+            GameObject mirror = new GameObject("鏡台");
+            mirror.transform.SetParent(parent, false);
+
+            float x = -WallInner(RoomHalf) + 0.24f;
+
+            Box(mirror.transform, "Stand", new Vector3(x, 0.3f, 2f),
+                new Vector3(0.44f, 0.6f, 0.82f), matWood, true);
+            Box(mirror.transform, "Post_L", new Vector3(x, 0.74f, 1.68f),
+                new Vector3(0.06f, 0.34f, 0.06f), matWoodDark, false);
+            Box(mirror.transform, "Post_R", new Vector3(x, 0.74f, 2.32f),
+                new Vector3(0.06f, 0.34f, 0.06f), matWoodDark, false);
+            Box(mirror.transform, "Frame", new Vector3(x, 1.18f, 2f),
+                new Vector3(0.08f, 0.94f, 0.74f), matWoodDark, true);
+            Box(mirror.transform, "Glass", new Vector3(x + 0.05f, 1.18f, 2f),
+                new Vector3(0.02f, 0.82f, 0.62f), matMirror, false);
+
+            mirror.AddComponent<MirrorStand>();
+        }
+
+        // Paper panel plus a dark lattice in front of it. The paper is emissive so it
+        // reads as moonlight from outside without needing light to pass through walls.
+        static void BuildShoji(Transform parent, Vector3 center, Vector2 size, bool facingX)
+        {
+            GameObject group = new GameObject("障子");
+            group.transform.SetParent(parent, false);
+
+            float w = size.x;
+            float h = size.y;
+            float inward = facingX ? -0.035f : -0.035f;
+
+            Box(group.transform, "Paper", center,
+                facingX ? new Vector3(0.04f, h, w) : new Vector3(w, h, 0.04f), matShoji, false);
+
+            Vector3 railSize = facingX ? new Vector3(0.07f, 0.1f, w + 0.1f) : new Vector3(w + 0.1f, 0.1f, 0.07f);
+            Box(group.transform, "Rail_Top", center + new Vector3(0f, h * 0.5f, 0f), railSize, matWood, false);
+            Box(group.transform, "Rail_Bottom", center - new Vector3(0f, h * 0.5f, 0f), railSize, matWood, false);
+
+            Vector3 stileSize = facingX ? new Vector3(0.07f, h, 0.1f) : new Vector3(0.1f, h, 0.07f);
+            Vector3 edge = facingX ? new Vector3(0f, 0f, w * 0.5f) : new Vector3(w * 0.5f, 0f, 0f);
+            Box(group.transform, "Stile_A", center + edge, stileSize, matWood, false);
+            Box(group.transform, "Stile_B", center - edge, stileSize, matWood, false);
+
+            Vector3 offset = facingX ? new Vector3(inward, 0f, 0f) : new Vector3(0f, 0f, inward);
+
+            int rows = Mathf.Max(2, Mathf.RoundToInt(h / 0.3f));
+            for (int i = 1; i < rows; i++)
+            {
+                float y = center.y - h * 0.5f + h * i / rows;
+                Vector3 s = facingX ? new Vector3(0.04f, 0.035f, w) : new Vector3(w, 0.035f, 0.04f);
+                Box(group.transform, "Slat_H" + i, new Vector3(center.x, y, center.z) + offset, s, matWoodDark, false);
+            }
+
+            int cols = Mathf.Max(2, Mathf.RoundToInt(w / 0.34f));
+            for (int i = 1; i < cols; i++)
+            {
+                float o = -w * 0.5f + w * i / cols;
+                Vector3 pos = facingX
+                    ? new Vector3(center.x, center.y, center.z + o)
+                    : new Vector3(center.x + o, center.y, center.z);
+                Vector3 s = facingX ? new Vector3(0.04f, h, 0.035f) : new Vector3(0.035f, h, 0.04f);
+                Box(group.transform, "Slat_V" + i, pos + offset, s, matWoodDark, false);
+            }
+        }
+
+        static void BuildHangingBulb(Transform parent, Vector3 pos, float intensity, float range, float blackoutChance)
+        {
+            GameObject group = new GameObject("裸電球");
+            group.transform.SetParent(parent, false);
+
+            float cordLen = Mathf.Max(0.1f, WallH - pos.y);
+            Cyl(group.transform, "Cord", new Vector3(pos.x, pos.y + cordLen * 0.5f, pos.z),
+                0.008f, cordLen, matWoodDark, false);
+            Box(group.transform, "Bulb", pos, new Vector3(0.11f, 0.14f, 0.11f), matBulb, false);
+
+            GameObject lightObj = new GameObject("Light");
+            lightObj.transform.SetParent(group.transform, false);
+            lightObj.transform.position = pos - new Vector3(0f, 0.06f, 0f);
+
+            Light l = lightObj.AddComponent<Light>();
+            l.type = LightType.Point;
+            l.color = new Color(1f, 0.81f, 0.6f);
+            l.intensity = intensity;
+            l.range = range;
+            l.shadows = LightShadows.Soft;
+
+            LightFlicker flicker = lightObj.AddComponent<LightFlicker>();
+            flicker.baseIntensity = intensity;
+            flicker.flickerAmount = 0.22f;
+            flicker.speed = 5f;
+            flicker.blackoutChance = blackoutChance;
         }
 
         // ---------------- Primitive helpers ----------------
 
-        static GameObject CreateFloor(Transform parent, Vector3 pos, Vector3 scale)
-        {
-            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = "Floor";
-            go.transform.SetParent(parent);
-            go.transform.position = pos + Vector3.down * (scale.y * 0.5f);
-            go.transform.localScale = scale;
-            ApplyColor(go, floorColor);
-            return go;
-        }
-
-        static GameObject CreateWall(Transform parent, string name, Vector3 pos, Vector3 scale)
+        static GameObject Box(Transform parent, string name, Vector3 pos, Vector3 size, Material mat, bool collider)
         {
             GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cube);
             go.name = name;
-            go.transform.SetParent(parent);
+            go.transform.SetParent(parent, false);
             go.transform.position = pos;
-            go.transform.localScale = scale;
-            ApplyColor(go, wallColor);
+            go.transform.localScale = size;
+            go.GetComponent<Renderer>().sharedMaterial = mat;
+            if (!collider)
+            {
+                UnityEngine.Object.DestroyImmediate(go.GetComponent<Collider>());
+            }
             return go;
         }
 
-        static GameObject CreateProp(Transform parent, string name, Vector3 pos, Vector3 scale, Color color)
+        static GameObject Cyl(Transform parent, string name, Vector3 pos, float radius, float height,
+            Material mat, bool collider, Vector3 euler = default)
         {
-            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             go.name = name;
-            go.transform.SetParent(parent);
+            go.transform.SetParent(parent, false);
             go.transform.position = pos;
-            go.transform.localScale = scale;
-            ApplyColor(go, color);
+            go.transform.localScale = new Vector3(radius * 2f, height * 0.5f, radius * 2f);
+            go.transform.localRotation = Quaternion.Euler(euler);
+            go.GetComponent<Renderer>().sharedMaterial = mat;
+            if (!collider)
+            {
+                UnityEngine.Object.DestroyImmediate(go.GetComponent<Collider>());
+            }
             return go;
         }
 
-        static void ApplyColor(GameObject go, Color color)
+        static GameObject Rod(Transform parent, string name, Vector3 pos, float length, float radius)
         {
-            Renderer r = go.GetComponent<Renderer>();
-            Material mat = new Material(Shader.Find("Standard"));
-            mat.color = color;
-            r.sharedMaterial = mat;
+            return Cyl(parent, name, pos, radius, length, matWoodDark, false, new Vector3(0f, 0f, 90f));
         }
 
-        static void CreatePointLight(Transform parent, Vector3 pos, Color color, float intensity, float range)
+        // ---------------- Materials ----------------
+
+        static void CreateMaterials()
         {
-            GameObject go = new GameObject("Lamp");
-            go.transform.SetParent(parent);
-            go.transform.position = pos;
-            Light light = go.AddComponent<Light>();
-            light.type = LightType.Point;
-            light.color = color;
-            light.intensity = intensity;
-            light.range = range;
+            matPlaster = MakeMat("M_Plaster", new Color(0.15f, 0.125f, 0.105f), 0.04f, 0f);
+            matWood = MakeMat("M_Wood", new Color(0.105f, 0.075f, 0.055f), 0.2f, 0f);
+            matWoodDark = MakeMat("M_WoodDark", new Color(0.055f, 0.04f, 0.03f), 0.15f, 0f);
+            matTatami = MakeMat("M_Tatami", new Color(0.215f, 0.205f, 0.125f), 0.05f, 0f);
+            matTatamiEdge = MakeMat("M_TatamiEdge", new Color(0.085f, 0.07f, 0.045f), 0.1f, 0f);
+            matShoji = MakeMat("M_Shoji", new Color(0.55f, 0.6f, 0.68f), 0.05f, 0f,
+                new Color(0.22f, 0.29f, 0.4f));
+            matMirror = MakeMat("M_Mirror", new Color(0.05f, 0.06f, 0.07f), 0.95f, 0.85f);
+            matGold = MakeMat("M_Gold", new Color(0.26f, 0.19f, 0.07f), 0.55f, 0.8f,
+                new Color(0.05f, 0.035f, 0.01f));
+            matPaper = MakeMat("M_Paper", new Color(0.38f, 0.36f, 0.32f), 0.05f, 0f);
+            matStone = MakeMat("M_Stone", new Color(0.065f, 0.06f, 0.055f), 0.05f, 0f);
+            matBulb = MakeMat("M_Bulb", new Color(0.9f, 0.82f, 0.68f), 0.9f, 0f,
+                new Color(1f, 0.78f, 0.52f));
+        }
+
+        static Shader cachedStandardShader;
+
+        static Shader FindStandardShader()
+        {
+            if (cachedStandardShader != null) return cachedStandardShader;
+
+            // Try the usual name first, then fall back to shaders that are always
+            // present regardless of render pipeline / stripping settings, so we get
+            // a visibly-wrong-but-not-pink result instead of the error shader.
+            string[] candidates = { "Standard", "Legacy Shaders/Diffuse", "Unlit/Color", "Sprites/Default" };
+            foreach (string candidate in candidates)
+            {
+                Shader s = Shader.Find(candidate);
+                if (s != null)
+                {
+                    if (candidate != "Standard")
+                    {
+                        Debug.LogWarning("[SceneBuilder] Shader 'Standard' not found; falling back to '" + candidate + "'.");
+                    }
+                    cachedStandardShader = s;
+                    return s;
+                }
+            }
+
+            Debug.LogError("[SceneBuilder] No usable shader found at all (checked: " + string.Join(", ", candidates) + "). Materials will render pink.");
+            return null;
+        }
+
+        static Material MakeMat(string name, Color color, float smoothness, float metallic, Color? emission = null)
+        {
+            Material m = new Material(FindStandardShader());
+            m.name = name;
+            m.color = color;
+            m.SetFloat("_Glossiness", smoothness);
+            m.SetFloat("_Metallic", metallic);
+            if (emission.HasValue)
+            {
+                m.EnableKeyword("_EMISSION");
+                m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+                m.SetColor("_EmissionColor", emission.Value);
+            }
+            return m;
         }
 
         // ---------------- UI ----------------
