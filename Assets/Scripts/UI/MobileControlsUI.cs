@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using Ushimitsu.Player;
 using Ushimitsu.Interaction;
+using Ushimitsu.Platform;
 
 namespace Ushimitsu.UI
 {
@@ -64,7 +65,8 @@ namespace Ushimitsu.UI
         {
             // Resolved in Awake (not Start) because the title screen can turn this
             // layer on from its own Start(), and only Awake is guaranteed to run first.
-            touchDetected = Input.touchSupported;
+            // Input.touchSupported alone is not enough - see MobileBrowserDetect.
+            touchDetected = MobileBrowserDetect.IsMobile;
 
             rootRect = root != null ? root.GetComponent<RectTransform>() : null;
             canvas = GetComponentInParent<Canvas>();

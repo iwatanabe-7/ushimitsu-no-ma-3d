@@ -1,4 +1,5 @@
 using UnityEngine;
+using Ushimitsu.Platform;
 
 namespace Ushimitsu.UI
 {
@@ -14,7 +15,8 @@ namespace Ushimitsu.UI
 
         void Awake()
         {
-            touchDevice = Input.touchSupported;
+            // Input.touchSupported alone is not enough - see MobileBrowserDetect.
+            touchDevice = MobileBrowserDetect.IsMobile;
             if (!touchDevice && prompt != null) prompt.SetActive(false);
         }
 
