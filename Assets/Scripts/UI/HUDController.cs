@@ -40,6 +40,14 @@ namespace Ushimitsu.UI
 
             // Listeners added from an editor script are not serialized, so wire here.
             if (restartButton != null) restartButton.onClick.AddListener(RestartPressed);
+
+            // The touch layer's full-screen area would sit over the dial's own
+            // buttons and eat their taps, so it's hidden while the dial is open
+            // and brought back however the dial gets closed.
+            if (dialPanel != null)
+            {
+                dialPanel.OpenChanged += open => mobileControls?.SetGameplayActive(!open);
+            }
         }
 
         void Update()
@@ -125,16 +133,12 @@ namespace Ushimitsu.UI
         public void OpenDialPanel(Game.DoorLock doorLock)
         {
             DismissMessage();
-            // Otherwise the full-screen touch-look area sits on top of the dial's
-            // own buttons and eats every tap meant for them.
-            mobileControls?.SetGameplayActive(false);
             dialPanel?.Open(doorLock);
         }
 
         public void CloseDialPanel()
         {
             dialPanel?.Close();
-            mobileControls?.SetGameplayActive(true);
         }
 
         public void ShakeDial()

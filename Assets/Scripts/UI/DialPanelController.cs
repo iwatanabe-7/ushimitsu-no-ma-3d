@@ -18,6 +18,11 @@ namespace Ushimitsu.UI
         public Color selectedDigitColor = new Color(0.86f, 0.71f, 0.38f);
         public Color idleDigitColor = new Color(0.93f, 0.89f, 0.83f);
 
+        // Raised from Open()/Close() themselves, so every way of closing the
+        // panel (戻る button, Esc, a correct code) is seen by listeners - not just
+        // the ones that happen to go through HUDController.
+        public event System.Action<bool> OpenChanged;
+
         readonly int[] digits = new int[3];
         DoorLock activeLock;
         float shakeTimer;
@@ -58,6 +63,7 @@ namespace Ushimitsu.UI
             selectedIndex = 0;
             RefreshTexts();
             GameManager.Instance?.SetPlayerInputLocked(true);
+            OpenChanged?.Invoke(true);
         }
 
         public void ShowHint(string text)
@@ -69,6 +75,7 @@ namespace Ushimitsu.UI
         {
             if (panelRoot != null) panelRoot.SetActive(false);
             GameManager.Instance?.SetPlayerInputLocked(false);
+            OpenChanged?.Invoke(false);
         }
 
         public void Increment(int index)
