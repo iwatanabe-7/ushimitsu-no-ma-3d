@@ -4,6 +4,10 @@
 
 深夜の和室で目を覚まし、家の中を歩き回って手がかりを集め、丑三つ時（午前2時）になる前に玄関から脱出します。
 
+## ゲームURL
+Unityroom で配信中  
+https://unityroom.com/games/ushimitsu-no-ma
+
 ## 操作方法
 
 | 操作 | キー |
