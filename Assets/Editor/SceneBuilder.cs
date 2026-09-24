@@ -47,8 +47,10 @@ namespace Ushimitsu.EditorTools
             HUDController hud = BuildUI();
             JumpscareController jumpscare = BuildJumpscareAudioRig(hud);
 
-            BuildMobileControls(hud.transform, player.GetComponent<FirstPersonController>(),
+            hud.mobileControls = BuildMobileControls(hud.transform, player.GetComponent<FirstPersonController>(),
                 player.GetComponentInChildren<InteractionController>());
+
+            BuildOrientationGuard(hud.transform);
 
             BuildWashitsu();
             BuildCorridor();
@@ -684,7 +686,23 @@ namespace Ushimitsu.EditorTools
         // On-screen joystick + drag-to-look + interact button, shown only when
         // Input.touchSupported is true at runtime (see MobileControlsUI). Desktop
         // players never see this layer; PC controls are completely unchanged.
-        static void BuildMobileControls(Transform canvasParent, FirstPersonController player, InteractionController interaction)
+        // The left/right touch split only makes sense in landscape. This sits above
+        // every other layer and blocks play with a clear prompt until the phone is
+        // actually turned sideways.
+        static void BuildOrientationGuard(Transform canvasParent)
+        {
+            GameObject panel = CreatePanel(canvasParent, "OrientationGuard", new Color(0.02f, 0.015f, 0.012f, 0.97f),
+                new Vector2(0f, 0f), new Vector2(1f, 1f), Vector2.zero, Vector2.zero);
+
+            CreateText(panel.transform, "Message", 26, creamText, TextAnchor.MiddleCenter,
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(600f, 160f))
+                .text = "スマホを横向きにしてください";
+
+            OrientationGuard guard = canvasParent.gameObject.AddComponent<OrientationGuard>();
+            guard.prompt = panel;
+        }
+
+        static MobileControlsUI BuildMobileControls(Transform canvasParent, FirstPersonController player, InteractionController interaction)
         {
             GameObject root = new GameObject("MobileControls");
             root.transform.SetParent(canvasParent, false);
@@ -696,18 +714,11 @@ namespace Ushimitsu.EditorTools
             controls.player = player;
             controls.interaction = interaction;
 
-            // Drag-to-look: covers the full screen so a thumb can swipe from
-            // anywhere; the joystick and button sit on top of it and claim their
-            // own small area first.
-            GameObject lookObj = new GameObject("LookArea");
-            lookObj.transform.SetParent(root.transform, false);
-            RectTransform lookRect = lookObj.AddComponent<RectTransform>();
-            StretchFull(lookRect);
-            Image lookImg = lookObj.AddComponent<Image>();
-            lookImg.color = new Color(0f, 0f, 0f, 0.01f); // near-invisible, still a raycast target
-            controls.lookArea = lookObj.AddComponent<TouchLookArea>();
-
-            // Joystick: bottom-left ring + knob.
+            // Input itself is read straight from Input.touches in MobileControlsUI
+            // (see its header comment for why), so nothing here needs to be a UI
+            // raycast target for movement/look. The ring/knob are visuals only;
+            // MobileControlsUI resizes them to the real stick radius and moves the
+            // ring to wherever the thumb lands.
             GameObject ringObj = new GameObject("JoystickRing");
             ringObj.transform.SetParent(root.transform, false);
             RectTransform ringRect = ringObj.AddComponent<RectTransform>();
@@ -718,6 +729,7 @@ namespace Ushimitsu.EditorTools
             ringRect.sizeDelta = new Vector2(190f, 190f);
             Image ringImg = ringObj.AddComponent<Image>();
             ringImg.color = new Color(0.9f, 0.87f, 0.8f, 0.18f);
+            ringImg.raycastTarget = false;
 
             GameObject knobObj = new GameObject("JoystickKnob");
             knobObj.transform.SetParent(ringObj.transform, false);
@@ -728,17 +740,20 @@ namespace Ushimitsu.EditorTools
             knobRect.sizeDelta = new Vector2(80f, 80f);
             Image knobImg = knobObj.AddComponent<Image>();
             knobImg.color = new Color(0.9f, 0.87f, 0.8f, 0.4f);
+            knobImg.raycastTarget = false;
+            controls.joystickRing = ringRect;
+            controls.joystickKnob = knobRect;
 
-            VirtualJoystick joystick = ringObj.AddComponent<VirtualJoystick>();
-            joystick.ring = ringRect;
-            joystick.knob = knobRect;
-            joystick.ringRadius = 70f;
-            controls.joystick = joystick;
-
-            // Interact button: bottom-right.
+            // Interact button: bottom-right. This one still goes through the normal
+            // UI Button/EventSystem click path (a single tap has no multi-touch
+            // ambiguity to worry about) - Input.touches only needs to know its
+            // screen-space rect so a look-drag starting on top of it is ignored.
             GameObject interactBtn = CreateButton(root.transform, "InteractButton", "調べる", 20,
                 new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-110f, 110f), new Vector2(150f, 150f));
             controls.interactButton = interactBtn.GetComponent<Button>();
+            controls.interactButtonRect = interactBtn.GetComponent<RectTransform>();
+
+            return controls;
         }
 
         static HUDController BuildUI()

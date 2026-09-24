@@ -7,16 +7,12 @@ namespace Ushimitsu.Player
     {
         public float moveSpeed = 3.2f;
         public float lookSensitivity = 1.4f;
-        // Touch drag deltas arrive in raw screen pixels, a completely different scale
-        // from the mouse axis, so they get their own multiplier instead of sharing
-        // lookSensitivity.
-        public float touchLookSensitivity = 0.18f;
         public float gravity = -18f;
         public Transform cameraPivot;
 
-        // Fed once per frame by the mobile joystick / touch-look UI when present.
-        // Left untouched (zero) on desktop, so they simply add nothing below - no
-        // platform branching needed in the movement code itself.
+        // Fed once per frame by the mobile controls when present; left at zero on
+        // desktop, so they add nothing there. externalLookDelta is already in
+        // degrees - touch sensitivity lives in MobileControlsUI, not here.
         [System.NonSerialized] public Vector2 externalMove;
         [System.NonSerialized] public Vector2 externalLookDelta;
 
@@ -47,10 +43,14 @@ namespace Ushimitsu.Player
             // GetAxis (not Raw) runs the mouse delta through Unity's built-in
             // smoothing filter, which is exactly the laggy/floaty feel being reported.
             // Raw input tracks the mouse 1:1, the way a first-person look should.
-            float mouseX = Input.GetAxisRaw("Mouse X") * lookSensitivity;
-            float mouseY = Input.GetAxisRaw("Mouse Y") * lookSensitivity;
-            float lookX = mouseX + externalLookDelta.x * touchLookSensitivity;
-            float lookY = mouseY + externalLookDelta.y * touchLookSensitivity;
+            // While fingers are on the screen the mouse axes are ignored outright, so
+            // a touch can never reach the camera twice (once as touch, once as an
+            // emulated mouse), even on a browser that emulates the mouse itself.
+            bool touching = Input.touchCount > 0;
+            float mouseX = touching ? 0f : Input.GetAxisRaw("Mouse X") * lookSensitivity;
+            float mouseY = touching ? 0f : Input.GetAxisRaw("Mouse Y") * lookSensitivity;
+            float lookX = mouseX + externalLookDelta.x;
+            float lookY = mouseY + externalLookDelta.y;
             externalLookDelta = Vector2.zero; // consumed for this frame
 
             transform.Rotate(Vector3.up * lookX);

@@ -27,6 +27,8 @@ namespace Ushimitsu.UI
         public Text endingBodyText;
         public Button restartButton;
 
+        public MobileControlsUI mobileControls;
+
         readonly List<string> inventoryItems = new List<string>();
         Coroutine hideRoutine;
 
@@ -60,6 +62,7 @@ namespace Ushimitsu.UI
             if (promptText != null) promptText.gameObject.SetActive(visible);
             if (clockText != null) clockText.gameObject.SetActive(visible);
             if (inventoryText != null) inventoryText.gameObject.SetActive(visible);
+            mobileControls?.SetGameplayActive(visible);
         }
 
         public void Log(string line, LineStyle style)
@@ -122,12 +125,16 @@ namespace Ushimitsu.UI
         public void OpenDialPanel(Game.DoorLock doorLock)
         {
             DismissMessage();
+            // Otherwise the full-screen touch-look area sits on top of the dial's
+            // own buttons and eats every tap meant for them.
+            mobileControls?.SetGameplayActive(false);
             dialPanel?.Open(doorLock);
         }
 
         public void CloseDialPanel()
         {
             dialPanel?.Close();
+            mobileControls?.SetGameplayActive(true);
         }
 
         public void ShakeDial()
