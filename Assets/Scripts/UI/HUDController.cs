@@ -27,6 +27,8 @@ namespace Ushimitsu.UI
         public Text endingBodyText;
         public Button restartButton;
 
+        public MobileControlsUI mobileControls;
+
         readonly List<string> inventoryItems = new List<string>();
         Coroutine hideRoutine;
 
@@ -38,6 +40,14 @@ namespace Ushimitsu.UI
 
             // Listeners added from an editor script are not serialized, so wire here.
             if (restartButton != null) restartButton.onClick.AddListener(RestartPressed);
+
+            // The touch layer's full-screen area would sit over the dial's own
+            // buttons and eat their taps, so it's hidden while the dial is open
+            // and brought back however the dial gets closed.
+            if (dialPanel != null)
+            {
+                dialPanel.OpenChanged += open => mobileControls?.SetGameplayActive(!open);
+            }
         }
 
         void Update()
@@ -60,6 +70,7 @@ namespace Ushimitsu.UI
             if (promptText != null) promptText.gameObject.SetActive(visible);
             if (clockText != null) clockText.gameObject.SetActive(visible);
             if (inventoryText != null) inventoryText.gameObject.SetActive(visible);
+            mobileControls?.SetGameplayActive(visible);
         }
 
         public void Log(string line, LineStyle style)

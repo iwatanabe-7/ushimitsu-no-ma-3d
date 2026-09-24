@@ -10,6 +10,12 @@ namespace Ushimitsu.Player
         public float gravity = -18f;
         public Transform cameraPivot;
 
+        // Fed once per frame by the mobile controls when present; left at zero on
+        // desktop, so they add nothing there. externalLookDelta is already in
+        // degrees - touch sensitivity lives in MobileControlsUI, not here.
+        [System.NonSerialized] public Vector2 externalMove;
+        [System.NonSerialized] public Vector2 externalLookDelta;
+
         CharacterController controller;
         float pitch;
         float verticalVelocity;
@@ -37,12 +43,19 @@ namespace Ushimitsu.Player
             // GetAxis (not Raw) runs the mouse delta through Unity's built-in
             // smoothing filter, which is exactly the laggy/floaty feel being reported.
             // Raw input tracks the mouse 1:1, the way a first-person look should.
-            float mouseX = Input.GetAxisRaw("Mouse X") * lookSensitivity;
-            float mouseY = Input.GetAxisRaw("Mouse Y") * lookSensitivity;
+            // While fingers are on the screen the mouse axes are ignored outright, so
+            // a touch can never reach the camera twice (once as touch, once as an
+            // emulated mouse), even on a browser that emulates the mouse itself.
+            bool touching = Input.touchCount > 0;
+            float mouseX = touching ? 0f : Input.GetAxisRaw("Mouse X") * lookSensitivity;
+            float mouseY = touching ? 0f : Input.GetAxisRaw("Mouse Y") * lookSensitivity;
+            float lookX = mouseX + externalLookDelta.x;
+            float lookY = mouseY + externalLookDelta.y;
+            externalLookDelta = Vector2.zero; // consumed for this frame
 
-            transform.Rotate(Vector3.up * mouseX);
+            transform.Rotate(Vector3.up * lookX);
 
-            pitch -= mouseY;
+            pitch -= lookY;
             pitch = Mathf.Clamp(pitch, -70f, 70f);
             if (cameraPivot != null)
             {
@@ -51,9 +64,14 @@ namespace Ushimitsu.Player
 
             float dt = Mathf.Min(Time.deltaTime, 0.05f);
 
-            float x = Input.GetAxisRaw("Horizontal");
-            float z = Input.GetAxisRaw("Vertical");
-            Vector3 move = (transform.right * x + transform.forward * z).normalized * moveSpeed;
+            float x = Mathf.Clamp(Input.GetAxisRaw("Horizontal") + externalMove.x, -1f, 1f);
+            float z = Mathf.Clamp(Input.GetAxisRaw("Vertical") + externalMove.y, -1f, 1f);
+            // Clamp the magnitude rather than normalizing outright, so a lightly
+            // tilted touch joystick still walks slower than a full push - normalizing
+            // would snap every non-zero input to full speed.
+            Vector3 moveDir = transform.right * x + transform.forward * z;
+            if (moveDir.magnitude > 1f) moveDir.Normalize();
+            Vector3 move = moveDir * moveSpeed;
 
             if (controller.isGrounded && verticalVelocity < 0f)
             {

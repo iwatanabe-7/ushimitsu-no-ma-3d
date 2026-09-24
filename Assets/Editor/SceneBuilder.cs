@@ -47,6 +47,11 @@ namespace Ushimitsu.EditorTools
             HUDController hud = BuildUI();
             JumpscareController jumpscare = BuildJumpscareAudioRig(hud);
 
+            hud.mobileControls = BuildMobileControls(hud.transform, player.GetComponent<FirstPersonController>(),
+                player.GetComponentInChildren<InteractionController>());
+
+            BuildOrientationGuard(hud.transform);
+
             BuildWashitsu();
             BuildCorridor();
             BuildGenkan();
@@ -283,33 +288,16 @@ namespace Ushimitsu.EditorTools
             BuildCeiling(t, new Vector3(0f, WallH, zc), new Vector2(GenkanHalfX * 2f, depth), 3);
             BuildHangingBulb(t, new Vector3(0f, 2.02f, zc - 0.6f), 1.15f, 9f, 0.15f);
 
-            GameObject door = new GameObject("出口の扉");
-            door.transform.SetParent(t, false);
-            float dz = WallInner(GenkanZ1) - 0.06f;
+            // Same shoji look as every other screen in the house (see BuildShoji) -
+            // it's the one that's also a door, so the paper gets a collider and a
+            // dial lock is mounted on its face.
+            float doorZ = WallInner(GenkanZ1) - 0.03f;
+            GameObject door = BuildShoji(t, new Vector3(0f, 1.05f, doorZ), new Vector2(1.9f, 2f),
+                false, "出口の扉", true);
 
-            Box(door.transform, "Panel_L", new Vector3(-0.44f, 1f, dz),
-                new Vector3(0.86f, 1.94f, 0.05f), matShoji, true);
-            Box(door.transform, "Panel_R", new Vector3(0.44f, 1f, dz - 0.06f),
-                new Vector3(0.86f, 1.94f, 0.05f), matShoji, true);
-            Box(door.transform, "Frame_Top", new Vector3(0f, 2.04f, dz - 0.03f),
-                new Vector3(1.94f, 0.12f, 0.16f), matWood, false);
-            Box(door.transform, "Frame_Bottom", new Vector3(0f, 0.03f, dz - 0.03f),
-                new Vector3(1.94f, 0.1f, 0.16f), matWood, false);
-            Box(door.transform, "Frame_L", new Vector3(-0.94f, 1f, dz - 0.03f),
-                new Vector3(0.1f, 2.06f, 0.16f), matWood, false);
-            Box(door.transform, "Frame_R", new Vector3(0.94f, 1f, dz - 0.03f),
-                new Vector3(0.1f, 2.06f, 0.16f), matWood, false);
-
-            for (int i = 1; i < 5; i++)
-            {
-                float y = 0.1f + 1.84f * i / 5f;
-                Box(door.transform, "Slat" + i, new Vector3(0f, y, dz - 0.05f),
-                    new Vector3(1.8f, 0.035f, 0.04f), matWoodDark, false);
-            }
-
-            Box(door.transform, "LockBox", new Vector3(1.2f, 1.05f, dz - 0.04f),
+            Box(door.transform, "LockBox", new Vector3(0.75f, 1.05f, doorZ - 0.09f),
                 new Vector3(0.24f, 0.32f, 0.12f), matWoodDark, true);
-            Cyl(door.transform, "Dial", new Vector3(1.2f, 1.05f, dz - 0.13f),
+            Cyl(door.transform, "Dial", new Vector3(0.75f, 1.05f, doorZ - 0.18f),
                 0.07f, 0.03f, matGold, false, new Vector3(90f, 0f, 0f));
 
             DoorLock doorLock = door.AddComponent<DoorLock>();
@@ -494,9 +482,13 @@ namespace Ushimitsu.EditorTools
 
         // Paper panel plus a dark lattice in front of it. The paper is emissive so it
         // reads as moonlight from outside without needing light to pass through walls.
-        static void BuildShoji(Transform parent, Vector3 center, Vector2 size, bool facingX)
+        // Decorative shoji (windows) leave the paper without a collider - nothing
+        // needs to walk into them. The exit door reuses this same look but asks for
+        // a solid paper panel, since it's the one shoji that's also a real door.
+        static GameObject BuildShoji(Transform parent, Vector3 center, Vector2 size, bool facingX,
+            string name = "障子", bool paperCollider = false)
         {
-            GameObject group = new GameObject("障子");
+            GameObject group = new GameObject(name);
             group.transform.SetParent(parent, false);
 
             float w = size.x;
@@ -511,7 +503,7 @@ namespace Ushimitsu.EditorTools
             Vector3 offsetV = facingX ? new Vector3(inward - 0.015f, 0f, 0f) : new Vector3(0f, 0f, inward - 0.015f);
 
             Box(group.transform, "Paper", center,
-                facingX ? new Vector3(0.04f, h, w) : new Vector3(w, h, 0.04f), matShoji, false);
+                facingX ? new Vector3(0.04f, h, w) : new Vector3(w, h, 0.04f), matShoji, paperCollider);
 
             Vector3 railSize = facingX ? new Vector3(0.07f, 0.1f, w + 0.1f) : new Vector3(w + 0.1f, 0.1f, 0.07f);
             Box(group.transform, "Rail_Top", center + new Vector3(0f, h * 0.5f, 0f) + offset, railSize, matWood, false);
@@ -540,6 +532,8 @@ namespace Ushimitsu.EditorTools
                 Vector3 s = facingX ? new Vector3(0.04f, h, 0.035f) : new Vector3(0.035f, h, 0.04f);
                 Box(group.transform, "Slat_V" + i, pos + offsetV, s, matWoodDark, false);
             }
+
+            return group;
         }
 
         static void BuildHangingBulb(Transform parent, Vector3 pos, float intensity, float range, float blackoutChance)
@@ -677,6 +671,79 @@ namespace Ushimitsu.EditorTools
         }
 
         // ---------------- UI ----------------
+
+        // On-screen joystick + drag-to-look + interact button, shown only when
+        // Input.touchSupported is true at runtime (see MobileControlsUI). Desktop
+        // players never see this layer; PC controls are completely unchanged.
+        // The left/right touch split only makes sense in landscape. This sits above
+        // every other layer and blocks play with a clear prompt until the phone is
+        // actually turned sideways.
+        static void BuildOrientationGuard(Transform canvasParent)
+        {
+            GameObject panel = CreatePanel(canvasParent, "OrientationGuard", new Color(0.02f, 0.015f, 0.012f, 0.97f),
+                new Vector2(0f, 0f), new Vector2(1f, 1f), Vector2.zero, Vector2.zero);
+
+            CreateText(panel.transform, "Message", 26, creamText, TextAnchor.MiddleCenter,
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(600f, 160f))
+                .text = "スマホを横向きにしてください";
+
+            OrientationGuard guard = canvasParent.gameObject.AddComponent<OrientationGuard>();
+            guard.prompt = panel;
+        }
+
+        static MobileControlsUI BuildMobileControls(Transform canvasParent, FirstPersonController player, InteractionController interaction)
+        {
+            GameObject root = new GameObject("MobileControls");
+            root.transform.SetParent(canvasParent, false);
+            RectTransform rootRect = root.AddComponent<RectTransform>();
+            StretchFull(rootRect);
+
+            MobileControlsUI controls = root.AddComponent<MobileControlsUI>();
+            controls.root = root;
+            controls.player = player;
+            controls.interaction = interaction;
+
+            // Input itself is read straight from Input.touches in MobileControlsUI
+            // (see its header comment for why), so nothing here needs to be a UI
+            // raycast target for movement/look. The ring/knob are visuals only;
+            // MobileControlsUI resizes them to the real stick radius and moves the
+            // ring to wherever the thumb lands.
+            GameObject ringObj = new GameObject("JoystickRing");
+            ringObj.transform.SetParent(root.transform, false);
+            RectTransform ringRect = ringObj.AddComponent<RectTransform>();
+            ringRect.anchorMin = new Vector2(0f, 0f);
+            ringRect.anchorMax = new Vector2(0f, 0f);
+            ringRect.pivot = new Vector2(0.5f, 0.5f);
+            ringRect.anchoredPosition = new Vector2(150f, 150f);
+            ringRect.sizeDelta = new Vector2(190f, 190f);
+            Image ringImg = ringObj.AddComponent<Image>();
+            ringImg.color = new Color(0.9f, 0.87f, 0.8f, 0.18f);
+            ringImg.raycastTarget = false;
+
+            GameObject knobObj = new GameObject("JoystickKnob");
+            knobObj.transform.SetParent(ringObj.transform, false);
+            RectTransform knobRect = knobObj.AddComponent<RectTransform>();
+            knobRect.anchorMin = new Vector2(0.5f, 0.5f);
+            knobRect.anchorMax = new Vector2(0.5f, 0.5f);
+            knobRect.pivot = new Vector2(0.5f, 0.5f);
+            knobRect.sizeDelta = new Vector2(80f, 80f);
+            Image knobImg = knobObj.AddComponent<Image>();
+            knobImg.color = new Color(0.9f, 0.87f, 0.8f, 0.4f);
+            knobImg.raycastTarget = false;
+            controls.joystickRing = ringRect;
+            controls.joystickKnob = knobRect;
+
+            // Interact button: bottom-right. This one still goes through the normal
+            // UI Button/EventSystem click path (a single tap has no multi-touch
+            // ambiguity to worry about) - Input.touches only needs to know its
+            // screen-space rect so a look-drag starting on top of it is ignored.
+            GameObject interactBtn = CreateButton(root.transform, "InteractButton", "調べる", 20,
+                new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-110f, 110f), new Vector2(150f, 150f));
+            controls.interactButton = interactBtn.GetComponent<Button>();
+            controls.interactButtonRect = interactBtn.GetComponent<RectTransform>();
+
+            return controls;
+        }
 
         static HUDController BuildUI()
         {

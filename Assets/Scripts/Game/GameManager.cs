@@ -112,6 +112,7 @@ namespace Ushimitsu.Game
             string extra = mirrorSeen
                 ? "\n\n――ただ、鏡の中で笑っていたあの顔だけは、まだ脳裏から離れない。"
                 : "";
+            hud?.SetGameplayHudVisible(false);
             hud?.ShowEnding("脱出成功", "外は静まり返った夜道だった。振り返らずに、あなたはその家を後にした。" + extra);
         }
 
@@ -124,6 +125,7 @@ namespace Ushimitsu.Game
             interactionController?.SetInputLocked(true);
             hud?.Log("時計が、午前二時を告げた。丑三つ時――扉はまだ開かない。", HUDController.LineStyle.Flavor);
             jumpscare?.Play();
+            hud?.SetGameplayHudVisible(false);
             hud?.ShowEnding("ゲームオーバー", "丑三つ時になった。\n\n家のどこかで、何かが静かに笑っていた気配がした。");
         }
     }

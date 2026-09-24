@@ -10,6 +10,8 @@ https://unityroom.com/games/ushimitsu-no-ma
 
 ## 操作方法
 
+### PC
+
 | 操作 | キー |
 |---|---|
 | 移動 | W / A / S / D |
@@ -19,6 +21,17 @@ https://unityroom.com/games/ushimitsu-no-ma
 | ダイヤル錠：数字の変更 | ↑ / ↓ |
 | ダイヤル錠：試す | Enter |
 | ダイヤル錠：戻る | Esc |
+
+### スマートフォン（横向き）
+
+| 操作 | タッチ |
+|---|---|
+| 移動 | 画面の左半分をドラッグ（指を置いた場所にスティックが出ます） |
+| 視点 | 画面の右半分をドラッグ |
+| 調べる・メッセージを閉じる | 右下の「調べる」ボタン |
+| ダイヤル錠 | 画面のボタンをタップ |
+
+縦向きで開いた場合は、横向きにするよう案内が表示されます。
 
 ## ゲームの流れ
 
@@ -39,3 +52,15 @@ https://unityroom.com/games/ushimitsu-no-ma
 `Ushimitsu → Build Scene` を実行すると `Assets/Scenes/Main.unity` が作り直されます。
 
 シーン構成を変更したい場合は `Assets/Editor/SceneBuilder.cs` を編集してください。
+
+## WebGLビルドとスマホでの確認
+
+`Ushimitsu → Build WebGL` で `Builds/WebGL` に unityroom 向けの設定（Gzip圧縮、Decompression Fallback無効）でビルドされます。unityroom には `Builds/WebGL/Build` フォルダをアップロードします。
+
+公開前にスマホ実機で確認するには、ビルド後に次を実行し、同じWi-Fiに接続したスマホから `http://<このPCのIPアドレス>:8420/` を開きます。
+
+```bash
+python3 serve_webgl.py
+```
+
+通常の簡易サーバーでは Gzip 圧縮されたビルドを読み込めないため、このスクリプトで正しいヘッダーを付けて配信しています。

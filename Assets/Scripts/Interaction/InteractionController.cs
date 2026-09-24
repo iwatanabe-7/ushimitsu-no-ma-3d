@@ -56,16 +56,24 @@ namespace Ushimitsu.Interaction
 
             if (Input.GetKeyDown(KeyCode.E))
             {
-                // If a message is on screen, E dismisses it first instead of
-                // immediately firing a new interaction underneath it.
-                if (hud != null && hud.IsMessageShowing())
-                {
-                    hud.DismissMessage();
-                }
-                else if (current != null)
-                {
-                    current.Interact();
-                }
+                TriggerInteract();
+            }
+        }
+
+        // Shared by the E key and the mobile "調べる" button.
+        public void TriggerInteract()
+        {
+            if (inputLocked) return;
+
+            // If a message is on screen, dismiss it first instead of immediately
+            // firing a new interaction underneath it.
+            if (hud != null && hud.IsMessageShowing())
+            {
+                hud.DismissMessage();
+            }
+            else if (current != null)
+            {
+                current.Interact();
             }
         }
     }
