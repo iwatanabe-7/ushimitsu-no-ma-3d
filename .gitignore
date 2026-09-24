@@ -40,6 +40,10 @@ crashlytics-build.properties
 
 # Batch-mode build logs from scripted scene generation
 *.log
+mono_crash.mem.*.blob
+
+# Packaged builds (zip these up fresh from Builds/ when needed)
+*.zip
 
 # OS
 .DS_Store

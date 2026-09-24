@@ -6,7 +6,7 @@ namespace Ushimitsu.Player
     public class FirstPersonController : MonoBehaviour
     {
         public float moveSpeed = 3.2f;
-        public float lookSensitivity = 2.2f;
+        public float lookSensitivity = 1.4f;
         public float gravity = -18f;
         public Transform cameraPivot;
 
@@ -34,8 +34,11 @@ namespace Ushimitsu.Player
         {
             if (inputLocked) return;
 
-            float mouseX = Input.GetAxis("Mouse X") * lookSensitivity;
-            float mouseY = Input.GetAxis("Mouse Y") * lookSensitivity;
+            // GetAxis (not Raw) runs the mouse delta through Unity's built-in
+            // smoothing filter, which is exactly the laggy/floaty feel being reported.
+            // Raw input tracks the mouse 1:1, the way a first-person look should.
+            float mouseX = Input.GetAxisRaw("Mouse X") * lookSensitivity;
+            float mouseY = Input.GetAxisRaw("Mouse Y") * lookSensitivity;
 
             transform.Rotate(Vector3.up * mouseX);
 

@@ -23,10 +23,21 @@ namespace Ushimitsu.EditorTools
         [MenuItem("Ushimitsu/Build Scene")]
         public static void BuildScene()
         {
-            uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            // The built-in LegacyRuntime font falls back to the OS's own fonts for
+            // glyphs it doesn't ship, which is how Japanese renders fine in the Editor
+            // and standalone builds. WebGL has no OS font access at all, so without an
+            // embedded Japanese-capable font every non-ASCII character is simply blank.
+            uiFont = AssetDatabase.LoadAssetAtPath<Font>("Assets/Fonts/MPLUS1p-Regular.ttf");
+            if (uiFont == null)
+            {
+                UnityEngine.Debug.LogError("[SceneBuilder] Assets/Fonts/MPLUS1p-Regular.ttf not found; " +
+                    "Japanese text will render blank in WebGL builds.");
+                uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            }
 
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
+            EnsureAntiAliasing();
             CreateMaterials();
             SetupLightingAndFog();
 
@@ -67,6 +78,20 @@ namespace Ushimitsu.EditorTools
             Debug.Log("[SceneBuilder] Scene built and saved at " + scenePath);
         }
 
+        // WebGL's default quality level ("High") ships with anti-aliasing off, which
+        // on all the thin parallel beams/lattice slats in this scene reads as a fuzzy
+        // dithered noise rather than clean edges. Force 4x MSAA on every level.
+        static void EnsureAntiAliasing()
+        {
+            int originalLevel = QualitySettings.GetQualityLevel();
+            for (int i = 0; i < QualitySettings.names.Length; i++)
+            {
+                QualitySettings.SetQualityLevel(i, true);
+                QualitySettings.antiAliasing = 4;
+            }
+            QualitySettings.SetQualityLevel(originalLevel, true);
+        }
+
         static void BuildEventSystem()
         {
             GameObject es = new GameObject("EventSystem");
@@ -76,13 +101,14 @@ namespace Ushimitsu.EditorTools
 
         static void SetupLightingAndFog()
         {
-            // Cold, very dim ambient so the warm bulbs and the moonlit shoji carry the scene.
+            // Cold, dim ambient so the warm bulbs and the moonlit shoji still carry the
+            // scene, just with a bit more of a floor under them than before.
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.035f, 0.038f, 0.05f);
+            RenderSettings.ambientLight = new Color(0.07f, 0.075f, 0.09f);
             RenderSettings.fog = true;
-            RenderSettings.fogColor = new Color(0.015f, 0.014f, 0.018f);
+            RenderSettings.fogColor = new Color(0.025f, 0.023f, 0.028f);
             RenderSettings.fogMode = FogMode.Exponential;
-            RenderSettings.fogDensity = 0.055f;
+            RenderSettings.fogDensity = 0.04f;
         }
 
         static GameObject BuildPlayer()
@@ -93,16 +119,16 @@ namespace Ushimitsu.EditorTools
             player.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
 
             CharacterController cc = player.AddComponent<CharacterController>();
-            cc.height = 1.75f;
+            cc.height = 1.55f;
             cc.radius = 0.3f;
-            cc.center = new Vector3(0f, 0.875f, 0f);
+            cc.center = new Vector3(0f, 0.775f, 0f);
             cc.stepOffset = 0.25f;
 
             FirstPersonController fpc = player.AddComponent<FirstPersonController>();
 
             GameObject camObj = new GameObject("PlayerCamera");
             camObj.transform.SetParent(player.transform);
-            camObj.transform.localPosition = new Vector3(0f, 1.6f, 0f);
+            camObj.transform.localPosition = new Vector3(0f, 1.45f, 0f);
             camObj.transform.localRotation = Quaternion.identity;
             Camera cam = camObj.AddComponent<Camera>();
             cam.nearClipPlane = 0.05f;
@@ -191,7 +217,7 @@ namespace Ushimitsu.EditorTools
             // Moon-lit shoji on the east wall: the paper glows, the lattice reads black.
             BuildShoji(t, new Vector3(WallInner(RoomHalf) - 0.03f, 1.2f, 1.35f), new Vector2(2.2f, 1.9f), true);
 
-            BuildHangingBulb(t, new Vector3(0f, 2.02f, -0.2f), 0.95f, 8f, 0.08f);
+            BuildHangingBulb(t, new Vector3(0f, 2.02f, -0.2f), 1.9f, 10f, 0.08f);
         }
 
         static void BuildCorridor()
@@ -221,7 +247,7 @@ namespace Ushimitsu.EditorTools
 
             BuildCeiling(t, new Vector3(0f, WallH, zc), new Vector2(DoorHalf * 2f, len), 4);
             BuildShoji(t, new Vector3(WallInner(DoorHalf) - 0.03f, 1.2f, zc - 0.9f), new Vector2(1.8f, 1.9f), true);
-            BuildHangingBulb(t, new Vector3(0f, 2.02f, zc + 1.3f), 0.5f, 6f, 0.3f);
+            BuildHangingBulb(t, new Vector3(0f, 2.02f, zc + 1.3f), 1.05f, 8f, 0.3f);
         }
 
         static DoorLock BuildGenkan()
@@ -255,7 +281,7 @@ namespace Ushimitsu.EditorTools
                 new Vector3(stubW, WallH, WallT), matPlaster, true);
 
             BuildCeiling(t, new Vector3(0f, WallH, zc), new Vector2(GenkanHalfX * 2f, depth), 3);
-            BuildHangingBulb(t, new Vector3(0f, 2.02f, zc - 0.6f), 0.55f, 7f, 0.15f);
+            BuildHangingBulb(t, new Vector3(0f, 2.02f, zc - 0.6f), 1.15f, 9f, 0.15f);
 
             GameObject door = new GameObject("出口の扉");
             door.transform.SetParent(t, false);
@@ -349,14 +375,18 @@ namespace Ushimitsu.EditorTools
             GameObject group = new GameObject("Ceiling");
             group.transform.SetParent(parent, false);
 
-            Box(group.transform, "Panel", new Vector3(center.x, center.y + 0.05f, center.z),
+            // `center.y` is exactly the wall top. The panel's bottom face must sit
+            // flush there (any higher and the sky shows through the gap above the
+            // walls); the beams hang further down, with clear air between them and
+            // the panel so the two don't z-fight on WebGL's shallower depth buffer.
+            Box(group.transform, "Panel", new Vector3(center.x, center.y + 0.04f, center.z),
                 new Vector3(size.x, 0.08f, size.y), matWoodDark, false);
 
             for (int i = 0; i < beamCount; i++)
             {
                 float k = (i + 1f) / (beamCount + 1f);
                 float z = center.z - size.y * 0.5f + size.y * k;
-                Box(group.transform, "Beam" + i, new Vector3(center.x, center.y - 0.04f, z),
+                Box(group.transform, "Beam" + i, new Vector3(center.x, center.y - 0.09f, z),
                     new Vector3(size.x, 0.09f, 0.1f), matWood, false);
             }
         }
@@ -471,21 +501,26 @@ namespace Ushimitsu.EditorTools
 
             float w = size.x;
             float h = size.y;
-            float inward = facingX ? -0.035f : -0.035f;
+            // The whole wooden frame (rails, stiles, slats) sits one consistent step
+            // in front of the paper. Without this every piece shared the paper's exact
+            // depth and z-fought with it as a flickering moire over the whole screen.
+            float inward = -0.06f;
+            Vector3 offset = facingX ? new Vector3(inward, 0f, 0f) : new Vector3(0f, 0f, inward);
+            // The vertical slats sit a hair further in than the horizontal ones so the
+            // two sets don't share a depth at every crossing point in the lattice.
+            Vector3 offsetV = facingX ? new Vector3(inward - 0.015f, 0f, 0f) : new Vector3(0f, 0f, inward - 0.015f);
 
             Box(group.transform, "Paper", center,
                 facingX ? new Vector3(0.04f, h, w) : new Vector3(w, h, 0.04f), matShoji, false);
 
             Vector3 railSize = facingX ? new Vector3(0.07f, 0.1f, w + 0.1f) : new Vector3(w + 0.1f, 0.1f, 0.07f);
-            Box(group.transform, "Rail_Top", center + new Vector3(0f, h * 0.5f, 0f), railSize, matWood, false);
-            Box(group.transform, "Rail_Bottom", center - new Vector3(0f, h * 0.5f, 0f), railSize, matWood, false);
+            Box(group.transform, "Rail_Top", center + new Vector3(0f, h * 0.5f, 0f) + offset, railSize, matWood, false);
+            Box(group.transform, "Rail_Bottom", center - new Vector3(0f, h * 0.5f, 0f) + offset, railSize, matWood, false);
 
             Vector3 stileSize = facingX ? new Vector3(0.07f, h, 0.1f) : new Vector3(0.1f, h, 0.07f);
             Vector3 edge = facingX ? new Vector3(0f, 0f, w * 0.5f) : new Vector3(w * 0.5f, 0f, 0f);
-            Box(group.transform, "Stile_A", center + edge, stileSize, matWood, false);
-            Box(group.transform, "Stile_B", center - edge, stileSize, matWood, false);
-
-            Vector3 offset = facingX ? new Vector3(inward, 0f, 0f) : new Vector3(0f, 0f, inward);
+            Box(group.transform, "Stile_A", center + edge + offset, stileSize, matWood, false);
+            Box(group.transform, "Stile_B", center - edge + offset, stileSize, matWood, false);
 
             int rows = Mathf.Max(2, Mathf.RoundToInt(h / 0.3f));
             for (int i = 1; i < rows; i++)
@@ -503,7 +538,7 @@ namespace Ushimitsu.EditorTools
                     ? new Vector3(center.x, center.y, center.z + o)
                     : new Vector3(center.x + o, center.y, center.z);
                 Vector3 s = facingX ? new Vector3(0.04f, h, 0.035f) : new Vector3(0.035f, h, 0.04f);
-                Box(group.transform, "Slat_V" + i, pos + offset, s, matWoodDark, false);
+                Box(group.transform, "Slat_V" + i, pos + offsetV, s, matWoodDark, false);
             }
         }
 
@@ -526,7 +561,10 @@ namespace Ushimitsu.EditorTools
             l.color = new Color(1f, 0.81f, 0.6f);
             l.intensity = intensity;
             l.range = range;
-            l.shadows = LightShadows.Soft;
+            // Point light shadow maps are low-resolution cubemaps by default and read
+            // as a blocky, pixelated black smear on nearby surfaces. This scene doesn't
+            // need dynamic shadows to sell the mood, so just turn them off outright.
+            l.shadows = LightShadows.None;
 
             LightFlicker flicker = lightObj.AddComponent<LightFlicker>();
             flicker.baseIntensity = intensity;
