@@ -47,6 +47,9 @@ namespace Ushimitsu.EditorTools
             HUDController hud = BuildUI();
             JumpscareController jumpscare = BuildJumpscareAudioRig(hud);
 
+            BuildMobileControls(hud.transform, player.GetComponent<FirstPersonController>(),
+                player.GetComponentInChildren<InteractionController>());
+
             BuildWashitsu();
             BuildCorridor();
             BuildGenkan();
@@ -677,6 +680,66 @@ namespace Ushimitsu.EditorTools
         }
 
         // ---------------- UI ----------------
+
+        // On-screen joystick + drag-to-look + interact button, shown only when
+        // Input.touchSupported is true at runtime (see MobileControlsUI). Desktop
+        // players never see this layer; PC controls are completely unchanged.
+        static void BuildMobileControls(Transform canvasParent, FirstPersonController player, InteractionController interaction)
+        {
+            GameObject root = new GameObject("MobileControls");
+            root.transform.SetParent(canvasParent, false);
+            RectTransform rootRect = root.AddComponent<RectTransform>();
+            StretchFull(rootRect);
+
+            MobileControlsUI controls = root.AddComponent<MobileControlsUI>();
+            controls.root = root;
+            controls.player = player;
+            controls.interaction = interaction;
+
+            // Drag-to-look: covers the full screen so a thumb can swipe from
+            // anywhere; the joystick and button sit on top of it and claim their
+            // own small area first.
+            GameObject lookObj = new GameObject("LookArea");
+            lookObj.transform.SetParent(root.transform, false);
+            RectTransform lookRect = lookObj.AddComponent<RectTransform>();
+            StretchFull(lookRect);
+            Image lookImg = lookObj.AddComponent<Image>();
+            lookImg.color = new Color(0f, 0f, 0f, 0.01f); // near-invisible, still a raycast target
+            controls.lookArea = lookObj.AddComponent<TouchLookArea>();
+
+            // Joystick: bottom-left ring + knob.
+            GameObject ringObj = new GameObject("JoystickRing");
+            ringObj.transform.SetParent(root.transform, false);
+            RectTransform ringRect = ringObj.AddComponent<RectTransform>();
+            ringRect.anchorMin = new Vector2(0f, 0f);
+            ringRect.anchorMax = new Vector2(0f, 0f);
+            ringRect.pivot = new Vector2(0.5f, 0.5f);
+            ringRect.anchoredPosition = new Vector2(150f, 150f);
+            ringRect.sizeDelta = new Vector2(190f, 190f);
+            Image ringImg = ringObj.AddComponent<Image>();
+            ringImg.color = new Color(0.9f, 0.87f, 0.8f, 0.18f);
+
+            GameObject knobObj = new GameObject("JoystickKnob");
+            knobObj.transform.SetParent(ringObj.transform, false);
+            RectTransform knobRect = knobObj.AddComponent<RectTransform>();
+            knobRect.anchorMin = new Vector2(0.5f, 0.5f);
+            knobRect.anchorMax = new Vector2(0.5f, 0.5f);
+            knobRect.pivot = new Vector2(0.5f, 0.5f);
+            knobRect.sizeDelta = new Vector2(80f, 80f);
+            Image knobImg = knobObj.AddComponent<Image>();
+            knobImg.color = new Color(0.9f, 0.87f, 0.8f, 0.4f);
+
+            VirtualJoystick joystick = ringObj.AddComponent<VirtualJoystick>();
+            joystick.ring = ringRect;
+            joystick.knob = knobRect;
+            joystick.ringRadius = 70f;
+            controls.joystick = joystick;
+
+            // Interact button: bottom-right.
+            GameObject interactBtn = CreateButton(root.transform, "InteractButton", "調べる", 20,
+                new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-110f, 110f), new Vector2(150f, 150f));
+            controls.interactButton = interactBtn.GetComponent<Button>();
+        }
 
         static HUDController BuildUI()
         {

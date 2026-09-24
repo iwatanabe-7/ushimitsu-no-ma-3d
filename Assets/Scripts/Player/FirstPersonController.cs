@@ -7,8 +7,18 @@ namespace Ushimitsu.Player
     {
         public float moveSpeed = 3.2f;
         public float lookSensitivity = 1.4f;
+        // Touch drag deltas arrive in raw screen pixels, a completely different scale
+        // from the mouse axis, so they get their own multiplier instead of sharing
+        // lookSensitivity.
+        public float touchLookSensitivity = 0.18f;
         public float gravity = -18f;
         public Transform cameraPivot;
+
+        // Fed once per frame by the mobile joystick / touch-look UI when present.
+        // Left untouched (zero) on desktop, so they simply add nothing below - no
+        // platform branching needed in the movement code itself.
+        [System.NonSerialized] public Vector2 externalMove;
+        [System.NonSerialized] public Vector2 externalLookDelta;
 
         CharacterController controller;
         float pitch;
@@ -39,10 +49,13 @@ namespace Ushimitsu.Player
             // Raw input tracks the mouse 1:1, the way a first-person look should.
             float mouseX = Input.GetAxisRaw("Mouse X") * lookSensitivity;
             float mouseY = Input.GetAxisRaw("Mouse Y") * lookSensitivity;
+            float lookX = mouseX + externalLookDelta.x * touchLookSensitivity;
+            float lookY = mouseY + externalLookDelta.y * touchLookSensitivity;
+            externalLookDelta = Vector2.zero; // consumed for this frame
 
-            transform.Rotate(Vector3.up * mouseX);
+            transform.Rotate(Vector3.up * lookX);
 
-            pitch -= mouseY;
+            pitch -= lookY;
             pitch = Mathf.Clamp(pitch, -70f, 70f);
             if (cameraPivot != null)
             {
@@ -51,9 +64,14 @@ namespace Ushimitsu.Player
 
             float dt = Mathf.Min(Time.deltaTime, 0.05f);
 
-            float x = Input.GetAxisRaw("Horizontal");
-            float z = Input.GetAxisRaw("Vertical");
-            Vector3 move = (transform.right * x + transform.forward * z).normalized * moveSpeed;
+            float x = Mathf.Clamp(Input.GetAxisRaw("Horizontal") + externalMove.x, -1f, 1f);
+            float z = Mathf.Clamp(Input.GetAxisRaw("Vertical") + externalMove.y, -1f, 1f);
+            // Clamp the magnitude rather than normalizing outright, so a lightly
+            // tilted touch joystick still walks slower than a full push - normalizing
+            // would snap every non-zero input to full speed.
+            Vector3 moveDir = transform.right * x + transform.forward * z;
+            if (moveDir.magnitude > 1f) moveDir.Normalize();
+            Vector3 move = moveDir * moveSpeed;
 
             if (controller.isGrounded && verticalVelocity < 0f)
             {
