@@ -44,7 +44,7 @@ https://unityroom.com/games/ushimitsu-no-ma
 
 - Unity 2022.3.4f1
 - ビルトインレンダーパイプライン
-- 外部アセット不使用（空間はプリミティブで構成、BGM・効果音はWeb Audio相当の処理でリアルタイム生成）
+- 外部アセット不使用（空間はコードで生成したメッシュと、スクリプトで合成したテクスチャで構成。BGM・効果音はWeb Audio相当の処理でリアルタイム生成）
 
 ## シーンの再生成
 
@@ -52,6 +52,18 @@ https://unityroom.com/games/ushimitsu-no-ma
 `Ushimitsu → Build Scene` を実行すると `Assets/Scenes/Main.unity` が作り直されます。
 
 シーン構成を変更したい場合は `Assets/Editor/SceneBuilder.cs` を編集してください。
+
+`Build Scene` は最後にライティングの焼き込み（ライトマップ、影、間接光、アンビエントオクルージョン、リフレクションプローブ）まで行うため、数分かかります。シーンはそのままでライティングだけ焼き直したい場合は `Ushimitsu → Bake Lighting` を実行します。焼き込み結果は `Assets/Scenes/Main/` に、設定は `Assets/Scenes/Main.lighting` に保存されます。
+
+## テクスチャの再生成
+
+畳・木目・土壁・和紙・三和土のテクスチャ（`Assets/Textures/`）は、外部素材を使わずスクリプトで合成しています。見た目を調整したい場合は `Tools/generate_textures.py` を編集し、次を実行してから `Build Scene` をやり直してください（Python 3 と numpy、Pillow が必要です）。
+
+```bash
+python3 Tools/generate_textures.py
+```
+
+各素材の色味は `SceneBuilder.CreateMaterials()` のマテリアル色で決まり、テクスチャは模様と凹凸だけを加えます。
 
 ## WebGLビルドとスマホでの確認
 

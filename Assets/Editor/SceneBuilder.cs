@@ -8,10 +8,11 @@ using Ushimitsu.Interaction;
 using Ushimitsu.Game;
 using Ushimitsu.UI;
 using Ushimitsu.Audio;
+using Ushimitsu.Rendering;
 
 namespace Ushimitsu.EditorTools
 {
-    public static class SceneBuilder
+    public static partial class SceneBuilder
     {
         static Font uiFont;
         static Color creamText = new Color(0.93f, 0.89f, 0.83f);
@@ -36,8 +37,11 @@ namespace Ushimitsu.EditorTools
             }
 
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            environmentRoots.Clear();
 
-            EnsureAntiAliasing();
+            EnsureQualitySettings();
+            BeginMeshAsset();
+            ConfigureTextureImporters();
             CreateMaterials();
             SetupLightingAndFog();
 
@@ -70,6 +74,12 @@ namespace Ushimitsu.EditorTools
 
             gm.interactionController.hud = hud;
 
+            foreach (GameObject root in environmentRoots)
+            {
+                MarkStatic(root);
+            }
+            EndMeshAsset();
+
             string scenesDir = "Assets/Scenes";
             if (!AssetDatabase.IsValidFolder(scenesDir))
             {
@@ -80,19 +90,29 @@ namespace Ushimitsu.EditorTools
 
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(scenePath, true) };
 
+            // The lights are Mixed/Shadowmask (see BuildHangingBulb), which only look
+            // right once baked, so a fresh scene is always baked straight away.
+            BakeLighting(scene, scenePath);
+
             Debug.Log("[SceneBuilder] Scene built and saved at " + scenePath);
         }
 
         // WebGL's default quality level ("High") ships with anti-aliasing off, which
         // on all the thin parallel beams/lattice slats in this scene reads as a fuzzy
         // dithered noise rather than clean edges. Force 4x MSAA on every level.
-        static void EnsureAntiAliasing()
+        // Every level also needs plain Shadowmask (not Distance Shadowmask) so the
+        // baked shadows are used at any distance and no realtime shadow maps are
+        // rendered for the static set, and per-texture anisotropic filtering so the
+        // tatami and floorboards stay sharp at the grazing angles you see them at.
+        static void EnsureQualitySettings()
         {
             int originalLevel = QualitySettings.GetQualityLevel();
             for (int i = 0; i < QualitySettings.names.Length; i++)
             {
                 QualitySettings.SetQualityLevel(i, true);
                 QualitySettings.antiAliasing = 4;
+                QualitySettings.shadowmaskMode = ShadowmaskMode.Shadowmask;
+                QualitySettings.anisotropicFiltering = AnisotropicFiltering.Enable;
             }
             QualitySettings.SetQualityLevel(originalLevel, true);
         }
@@ -139,6 +159,13 @@ namespace Ushimitsu.EditorTools
             cam.nearClipPlane = 0.05f;
             camObj.AddComponent<AudioListener>();
             camObj.tag = "MainCamera";
+
+            ScreenGrade grade = camObj.AddComponent<ScreenGrade>();
+            grade.shader = AssetDatabase.LoadAssetAtPath<Shader>(ScreenGradeShaderPath);
+            if (grade.shader == null)
+            {
+                Debug.LogError("[SceneBuilder] " + ScreenGradeShaderPath + " not found; the screen grade will be skipped.");
+            }
 
             fpc.cameraPivot = camObj.transform;
 
@@ -191,6 +218,7 @@ namespace Ushimitsu.EditorTools
         static void BuildWashitsu()
         {
             GameObject room = new GameObject("Room_Washitsu");
+            environmentRoots.Add(room);
             Transform t = room.transform;
 
             Box(t, "FloorSlab", new Vector3(0f, -0.1f, 0f),
@@ -223,11 +251,13 @@ namespace Ushimitsu.EditorTools
             BuildShoji(t, new Vector3(WallInner(RoomHalf) - 0.03f, 1.2f, 1.35f), new Vector2(2.2f, 1.9f), true);
 
             BuildHangingBulb(t, new Vector3(0f, 2.02f, -0.2f), 1.9f, 10f, 0.08f);
+            BuildReflectionProbe(t, new Vector3(0f, WallH * 0.5f, 0f), new Vector3(RoomHalf * 2f, WallH, RoomHalf * 2f));
         }
 
         static void BuildCorridor()
         {
             GameObject corridor = new GameObject("Corridor");
+            environmentRoots.Add(corridor);
             Transform t = corridor.transform;
 
             float zc = (CorridorZ0 + CorridorZ1) * 0.5f;
@@ -253,11 +283,13 @@ namespace Ushimitsu.EditorTools
             BuildCeiling(t, new Vector3(0f, WallH, zc), new Vector2(DoorHalf * 2f, len), 4);
             BuildShoji(t, new Vector3(WallInner(DoorHalf) - 0.03f, 1.2f, zc - 0.9f), new Vector2(1.8f, 1.9f), true);
             BuildHangingBulb(t, new Vector3(0f, 2.02f, zc + 1.3f), 1.05f, 8f, 0.3f);
+            BuildReflectionProbe(t, new Vector3(0f, WallH * 0.5f, zc), new Vector3(DoorHalf * 2f, WallH, len));
         }
 
         static DoorLock BuildGenkan()
         {
             GameObject room = new GameObject("Room_Genkan");
+            environmentRoots.Add(room);
             Transform t = room.transform;
 
             float zc = (GenkanZ0 + GenkanZ1) * 0.5f;
@@ -310,6 +342,11 @@ namespace Ushimitsu.EditorTools
             ml.color = new Color(0.52f, 0.66f, 0.95f);
             ml.intensity = 0.9f;
             ml.range = 5.5f;
+            // Moonlight through a paper door is broad and diffuse: a large baked
+            // shadow radius keeps its shadows soft instead of pin-sharp.
+            MakeMixedLight(ml, 0.4f);
+
+            BuildReflectionProbe(t, new Vector3(0f, WallH * 0.5f, zc), new Vector3(GenkanHalfX * 2f, WallH, depth));
 
             return doorLock;
         }
@@ -449,6 +486,7 @@ namespace Ushimitsu.EditorTools
             cl.color = new Color(1f, 0.6f, 0.26f);
             cl.intensity = 0.7f;
             cl.range = 2.8f;
+            MakeMixedLight(cl, 0.015f);
 
             LightFlicker cf = candle.AddComponent<LightFlicker>();
             cf.baseIntensity = 0.7f;
@@ -544,7 +582,10 @@ namespace Ushimitsu.EditorTools
             float cordLen = Mathf.Max(0.1f, WallH - pos.y);
             Cyl(group.transform, "Cord", new Vector3(pos.x, pos.y + cordLen * 0.5f, pos.z),
                 0.008f, cordLen, matWoodDark, false);
-            Box(group.transform, "Bulb", pos, new Vector3(0.11f, 0.14f, 0.11f), matBulb, false);
+            GameObject bulb = Box(group.transform, "Bulb", pos, new Vector3(0.11f, 0.14f, 0.11f), matBulb, false);
+            // The light sits inside this glass, so with baked shadows it would
+            // otherwise shadow its own light out completely.
+            bulb.GetComponent<MeshRenderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
 
             GameObject lightObj = new GameObject("Light");
             lightObj.transform.SetParent(group.transform, false);
@@ -555,10 +596,11 @@ namespace Ushimitsu.EditorTools
             l.color = new Color(1f, 0.81f, 0.6f);
             l.intensity = intensity;
             l.range = range;
-            // Point light shadow maps are low-resolution cubemaps by default and read
-            // as a blocky, pixelated black smear on nearby surfaces. This scene doesn't
-            // need dynamic shadows to sell the mood, so just turn them off outright.
-            l.shadows = LightShadows.None;
+            // Realtime point light shadow maps are low-resolution cubemaps and read as
+            // a blocky black smear here, so shadows come from the bake instead (see
+            // MakeMixedLight): soft, accurate, and they stop the light leaking through
+            // walls into the next room. The bulb itself is ~5cm across.
+            MakeMixedLight(l, 0.03f);
 
             LightFlicker flicker = lightObj.AddComponent<LightFlicker>();
             flicker.baseIntensity = intensity;
@@ -569,17 +611,19 @@ namespace Ushimitsu.EditorTools
 
         // ---------------- Primitive helpers ----------------
 
+        // The mesh is built at its real size (rather than scaling a unit cube) so its
+        // UVs are in metres - textures tile at a consistent density instead of
+        // stretching over long walls - and so its lightmap UVs aren't distorted.
         static GameObject Box(Transform parent, string name, Vector3 pos, Vector3 size, Material mat, bool collider)
         {
-            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = name;
+            GameObject go = new GameObject(name);
             go.transform.SetParent(parent, false);
             go.transform.position = pos;
-            go.transform.localScale = size;
-            go.GetComponent<Renderer>().sharedMaterial = mat;
-            if (!collider)
+            go.AddComponent<MeshFilter>().sharedMesh = BoxMesh(size, pos);
+            go.AddComponent<MeshRenderer>().sharedMaterial = mat;
+            if (collider)
             {
-                UnityEngine.Object.DestroyImmediate(go.GetComponent<Collider>());
+                go.AddComponent<BoxCollider>().size = size;
             }
             return go;
         }
@@ -587,16 +631,17 @@ namespace Ushimitsu.EditorTools
         static GameObject Cyl(Transform parent, string name, Vector3 pos, float radius, float height,
             Material mat, bool collider, Vector3 euler = default)
         {
-            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            go.name = name;
+            GameObject go = new GameObject(name);
             go.transform.SetParent(parent, false);
             go.transform.position = pos;
-            go.transform.localScale = new Vector3(radius * 2f, height * 0.5f, radius * 2f);
             go.transform.localRotation = Quaternion.Euler(euler);
-            go.GetComponent<Renderer>().sharedMaterial = mat;
-            if (!collider)
+            go.AddComponent<MeshFilter>().sharedMesh = CylinderMesh(radius, height);
+            go.AddComponent<MeshRenderer>().sharedMaterial = mat;
+            if (collider)
             {
-                UnityEngine.Object.DestroyImmediate(go.GetComponent<Collider>());
+                CapsuleCollider cc = go.AddComponent<CapsuleCollider>();
+                cc.radius = radius;
+                cc.height = height;
             }
             return go;
         }
@@ -624,6 +669,18 @@ namespace Ushimitsu.EditorTools
             matStone = MakeMat("M_Stone", new Color(0.065f, 0.06f, 0.055f), 0.05f, 0f);
             matBulb = MakeMat("M_Bulb", new Color(0.9f, 0.82f, 0.68f), 0.9f, 0f,
                 new Color(1f, 0.78f, 0.52f));
+
+            // Surface detail from Tools/generate_textures.py. The colours above stay
+            // the source of truth for each material's overall tone; ApplySurface
+            // only adds grain, weave and relief on top of them.
+            ApplySurface(matPlaster, "Plaster", 1.2f, 1f);
+            ApplySurface(matWood, "Wood", 0.8f, 0.8f);
+            ApplySurface(matWoodDark, "Wood", 0.65f, 0.6f);
+            ApplySurface(matTatami, "Tatami", 0.6f, 0.8f);
+            ApplySurface(matTatamiEdge, "TatamiEdge", 0.15f, 0.6f);
+            ApplySurface(matShoji, "Paper", 0.5f, 0.35f);
+            ApplySurface(matPaper, "Paper", 0.5f, 0.5f);
+            ApplySurface(matStone, "Stone", 0.9f, 1f);
         }
 
         static Shader cachedStandardShader;
@@ -664,7 +721,9 @@ namespace Ushimitsu.EditorTools
             if (emission.HasValue)
             {
                 m.EnableKeyword("_EMISSION");
-                m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+                // Baked so the moonlit shoji actually casts its cold blue glow onto
+                // the tatami and walls in the lightmaps, not just glows by itself.
+                m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.BakedEmissive;
                 m.SetColor("_EmissionColor", emission.Value);
             }
             return m;
