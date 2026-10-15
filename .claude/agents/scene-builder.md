@@ -13,6 +13,13 @@ tools: Read, Grep, Glob, Edit, Write, Bash
 - 単位はメートル。プレイヤーの身長・CharacterController の寸法（`BuildPlayer()` を参照）を基準に、通路幅・天井高・調べる対象の高さを決める。壁の内側座標は `WallInner()` を使う。
 - 調べられる物には Collider が必要（`InteractionController` がレイキャストで拾う）。見た目だけの装飾は collider を false にして通行を妨げないこと。
 - 照明は暗さが命。新しいライトは数を絞り、WebGL・スマホでの負荷（リアルタイムライトの数、影）を意識する。`LightFlicker` 付きの電球は `BuildHangingBulb()` を使う。
+
+## 質感とライティングの焼き込み（`SceneBuilder.Surfaces.cs` / `SceneBuilder.Lighting.cs` がある場合）
+- `Box()` / `Cyl()` は実寸メッシュを生成し、UV はメートル単位。テクスチャは `CreateMaterials()` の `ApplySurface(mat, "Wood", 繰り返し長[m], 凹凸の強さ)` で付ける。新しい質感が必要なら `Tools/generate_textures.py` に生成関数を足し、`TextureMean` と ALBEDO_MEAN を揃える。
+- 新しい部屋のルート GameObject は必ず `environmentRoots.Add(room)` する。登録しないと静的扱いにならず、ライトマップに焼かれない。
+- 新しいライトは `MakeMixedLight(light, 影の半径[m])` を通す（Mixed / Shadowmask）。1か所で重なる Mixed ライトは4つまで。光源がメッシュの内側にある場合は、そのメッシュの `shadowCastingMode` を Off にする（自分の光を遮ってしまうため）。
+- 部屋を足したら `BuildReflectionProbe()` も置く。
+- `Build Scene` は焼き込みまで実行し数分かかる。ライティングだけの変更は `Ushimitsu → Bake Lighting` で確認できる。
 - UI（Canvas 配下）を追加する場合は既存の `CreatePanel()`、`CreateText()`、`CreateButton()` と日本語フォント（M PLUS 1p）を使い、スマホ横画面でも収まるアンカー設定にする。
 
 ## 報告
